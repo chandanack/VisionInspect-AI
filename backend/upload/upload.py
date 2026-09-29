@@ -7,6 +7,16 @@ from backend.preprocess import (
 
 from backend.feature_extractor import extract_features
 from backend.anomaly_detector import predict_anomaly
+from backend.defect_classifier import predict_defect
+
+from backend.confidence import calculate_confidence
+from backend.defect_scoring import get_defect_type_score
+from backend.defect_size import get_defect_size_score
+from backend.defect_location import get_defect_location_score
+from backend.severity_scoring import calculate_severity
+from backend.risk_assessment import assess_quality_risk
+from backend.quality_report import generate_quality_report
+
 from backend.inspection_history import add_inspection
 
 import torch
@@ -88,7 +98,6 @@ async def upload_image(
     # ======================================
 
     if category not in CATEGORIES:
-
         return {
             "message": "Invalid category",
             "available_categories": CATEGORIES
@@ -104,7 +113,6 @@ async def upload_image(
     )
 
     if category_features is None:
-
         return {
             "message": (
                 "Normal features not found "
@@ -123,7 +131,6 @@ async def upload_image(
     )
 
     if threshold is None:
-
         return {
             "message": (
                 "Threshold not configured "
@@ -179,6 +186,85 @@ async def upload_image(
 
 
     # ======================================
+    # Defect Categorization
+    # ======================================
+
+    defect_type = None
+
+    if (
+        category == "bottle"
+        and result["result"] == "DEFECT"
+    ):
+        defect_type = predict_defect(
+            features
+        )
+
+
+    # ======================================
+    # Severity + Risk Assessment
+    # ======================================
+
+    severity_report = None
+    risk_report = None
+
+    if result["result"] == "DEFECT":
+
+        # Confidence
+        confidence_score = calculate_confidence(
+            result["anomaly_score"],
+            threshold
+        )
+
+        # Defect type
+        defect_type_score = get_defect_type_score(
+            defect_type
+        )
+
+        # Defect size
+        defect_size_score = get_defect_size_score(
+            defect_type
+        )
+
+        # Defect location
+        defect_location_score = (
+            get_defect_location_score(
+                defect_type
+            )
+        )
+
+        # Calculate severity
+        severity_report = calculate_severity(
+            defect_size_score,
+            defect_location_score,
+            defect_type_score,
+            confidence_score
+        )
+
+        # Store individual scores
+        severity_report[
+            "defect_size_score"
+        ] = defect_size_score
+
+        severity_report[
+            "location_score"
+        ] = defect_location_score
+
+        severity_report[
+            "defect_type_score"
+        ] = defect_type_score
+
+        severity_report[
+            "confidence_score"
+        ] = confidence_score
+
+        # Quality risk
+        risk_report = assess_quality_risk(
+            severity_report["severity_score"],
+            severity_report["severity_level"]
+        )
+
+
+    # ======================================
     # Generate Inspection ID
     # ======================================
 
@@ -202,12 +288,26 @@ async def upload_image(
     # ======================================
 
     if result["result"] == "DEFECT":
-
         product_status = "REJECT"
-
     else:
-
         product_status = "ACCEPT"
+
+
+    # ======================================
+    # Generate Production Quality Report
+    # ======================================
+
+    production_quality_report = (
+        generate_quality_report(
+            inspection_id=inspection_id,
+            category=category,
+            prediction=result["result"],
+            defect_type=defect_type,
+            severity_report=severity_report,
+            risk_report=risk_report,
+            product_status=product_status
+        )
+    )
 
 
     # ======================================
@@ -225,6 +325,16 @@ async def upload_image(
         "category": category,
 
         "prediction": result["result"],
+
+        "defect_type": defect_type,
+
+        "severity_report": severity_report,
+
+        "risk_report": risk_report,
+
+        "production_quality_report": (
+            production_quality_report
+        ),
 
         "product_status": product_status,
 

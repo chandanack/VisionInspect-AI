@@ -1,112 +1,164 @@
-// ================= ELEMENTS =================
+// ============================================================
+// VISIONINSPECT AI
+// FRONTEND CONTROLLER
+// ============================================================
+
+const API_BASE = "http://127.0.0.1:8000";
+
+// ------------------------------------------------------------
+// DOM ELEMENTS
+// ------------------------------------------------------------
 
 const imageInput = document.getElementById("imageInput");
-const uploadArea = document.getElementById("uploadArea");
+const categorySelect = document.getElementById("categorySelect");
+const analyzeBtn = document.getElementById("analyzeBtn");
+
 const previewContainer = document.getElementById("previewContainer");
 const previewImage = document.getElementById("previewImage");
+
 const fileName = document.getElementById("fileName");
 const fileSize = document.getElementById("fileSize");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const categorySelect = document.getElementById("categorySelect");
+
 const resultContent = document.getElementById("resultContent");
+const inspectionHistory = document.getElementById("inspectionHistory");
+
+const totalInspections = document.getElementById("totalInspections");
+const goodProducts = document.getElementById("goodProducts");
+const defectiveProducts = document.getElementById("defectiveProducts");
 
 
-// ================= DASHBOARD STATISTICS =================
+// ------------------------------------------------------------
+// PAGE START
+// ------------------------------------------------------------
 
-const totalInspectionsElement =
-    document.getElementById("totalInspections");
+document.addEventListener("DOMContentLoaded", () => {
 
-const goodProductsElement =
-    document.getElementById("goodProducts");
-
-const defectiveProductsElement =
-    document.getElementById("defectiveProducts");
-
-
-// ================= FILE SELECTION =================
-
-imageInput.addEventListener("change", function () {
-
-    const file = this.files[0];
-
-    if (!file) {
-        return;
-    }
-
-    // Show image preview
-
-    const reader = new FileReader();
-
-    reader.onload = function (event) {
-
-        previewImage.src = event.target.result;
-
-    };
-
-    reader.readAsDataURL(file);
-
-
-    // Show file information
-
-    fileName.textContent = file.name;
-
-    fileSize.textContent =
-        (file.size / 1024 / 1024).toFixed(2) + " MB";
-
-
-    // Hide upload area
-
-    uploadArea.classList.add("hidden");
-
-
-    // Show preview
-
-    previewContainer.classList.remove("hidden");
+    loadStatistics();
+    loadInspectionHistory();
 
 });
 
 
-// ================= ANALYZE IMAGE =================
+// ------------------------------------------------------------
+// IMAGE SELECTION
+// ------------------------------------------------------------
 
-analyzeBtn.addEventListener("click", async function () {
+if (imageInput) {
 
-    const file = imageInput.files[0];
+    imageInput.addEventListener("change", function () {
+
+        const file = this.files[0];
+
+        if (!file) {
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function (event) {
+
+            if (previewImage) {
+                previewImage.src = event.target.result;
+            }
+
+            if (previewContainer) {
+                previewContainer.classList.remove("hidden");
+            }
+
+        };
+
+        reader.readAsDataURL(file);
+
+        if (fileName) {
+            fileName.textContent = file.name;
+        }
+
+        if (fileSize) {
+            fileSize.textContent = formatFileSize(file.size);
+        }
+
+    });
+
+}
+
+
+// ------------------------------------------------------------
+// ANALYZE BUTTON
+// ------------------------------------------------------------
+
+if (analyzeBtn) {
+
+    analyzeBtn.addEventListener("click", analyzeImage);
+
+}
+
+
+// ------------------------------------------------------------
+// ANALYZE IMAGE
+// ------------------------------------------------------------
+
+async function analyzeImage() {
+
+    const file = imageInput ? imageInput.files[0] : null;
+    const category = categorySelect ? categorySelect.value : "";
 
     if (!file) {
 
-        alert("Please select an image first.");
+        showMessage(
+            "Please select an image first."
+        );
+
+        return;
+    }
+
+    if (!category) {
+
+        showMessage(
+            "Please select a product category."
+        );
 
         return;
     }
 
 
-    // Get selected category
-
-    const category = categorySelect.value;
-
-
-    // Create FormData
-
-    const formData = new FormData();
-
-    formData.append("category", category);
-
-    formData.append("file", file);
-
-
-    // Show loading state
-
-    analyzeBtn.textContent = "⏳ Analyzing...";
+    // Loading state
 
     analyzeBtn.disabled = true;
+
+    analyzeBtn.innerHTML = "⟳ AI ANALYZING...";
+
+
+    if (resultContent) {
+
+        resultContent.innerHTML = `
+            <div class="result-loading">
+
+                <div class="loading-spinner"></div>
+
+                <h3>
+                    AI Inspection Running
+                </h3>
+
+                <p>
+                    VisionInspect AI is analyzing the product image...
+                </p>
+
+            </div>
+        `;
+
+    }
 
 
     try {
 
-        // Send image to FastAPI
+        const formData = new FormData();
+
+        formData.append("category", category);
+        formData.append("file", file);
+
 
         const response = await fetch(
-            "http://127.0.0.1:8000/upload",
+            `${API_BASE}/upload`,
             {
                 method: "POST",
                 body: formData
@@ -114,371 +166,436 @@ analyzeBtn.addEventListener("click", async function () {
         );
 
 
-        // Convert response to JSON
-
         const data = await response.json();
 
-        console.log("AI Response:", data);
-
-
-        // Check backend response
 
         if (!response.ok) {
 
             throw new Error(
-                data.detail || "Backend request failed"
+                data.detail ||
+                data.message ||
+                "Inspection failed."
             );
 
         }
 
 
-        // Show AI result
+        if (
+            data.inspection_report
+        ) {
 
-        showResult(data);
+            displayInspectionResult(
+                data.inspection_report
+            );
+
+        }
 
 
-        // Refresh dashboard statistics
+        // Refresh dashboard data
 
-        loadInspectionStatistics();
+        await loadStatistics();
+        await loadInspectionHistory();
+
+
+    } catch (error) {
+
+        console.error(
+            "Inspection error:",
+            error
+        );
+
+
+        if (resultContent) {
+
+            resultContent.innerHTML = `
+
+                <div class="result-error">
+
+                    <h3>
+                        Inspection Failed
+                    </h3>
+
+                    <p>
+                        ${escapeHtml(error.message)}
+                    </p>
+
+                </div>
+
+            `;
+
+        }
+
+    } finally {
+
+        analyzeBtn.disabled = false;
+
+        analyzeBtn.innerHTML =
+            "🔍 Analyze Image";
 
     }
 
-    catch (error) {
-
-        console.error("Error:", error);
-
-        resultContent.innerHTML = `
-
-            <div class="result-icon">
-                !
-            </div>
-
-            <h3>
-                Connection Error
-            </h3>
-
-            <p>
-                Could not connect to the AI backend.
-                Make sure FastAPI is running.
-            </p>
-
-        `;
-
-    }
+}
 
 
-    // Restore button
+// ------------------------------------------------------------
+// DISPLAY INSPECTION RESULT
+// ------------------------------------------------------------
 
-    analyzeBtn.textContent = "🔍 Analyze Image";
+function displayInspectionResult(report) {
 
-    analyzeBtn.disabled = false;
-
-});
-
-
-// ================= SHOW RESULT =================
-
-function showResult(data) {
-
-
-    // ==========================================
-    // INVALID CATEGORY
-    // ==========================================
-
-    if (data.message === "Invalid category") {
-
-        resultContent.innerHTML = `
-
-            <div class="result-icon">
-                !
-            </div>
-
-            <h3>
-                Invalid Category
-            </h3>
-
-            <p>
-                Please select a valid product category.
-            </p>
-
-        `;
-
+    if (!resultContent) {
         return;
     }
 
 
-    // ==========================================
-    // MISSING NORMAL FEATURES
-    // ==========================================
+    const isDefect =
+        report.prediction === "DEFECT";
 
-    if (
-        data.message ===
-        "Normal features not found for this category"
-    ) {
 
-        resultContent.innerHTML = `
+    const severity =
+        report.severity_report || {};
 
-            <div class="result-icon">
-                !
+
+    const risk =
+        report.risk_report || {};
+
+
+    const quality =
+        report.quality_report || {};
+
+
+    const resultClass =
+        isDefect
+            ? "anomaly"
+            : "good";
+
+
+    const resultTitle =
+        isDefect
+            ? "ANOMALY DETECTED"
+            : "PRODUCT PASSED";
+
+
+    const defectType =
+        report.defect_type
+            ? formatText(report.defect_type)
+            : "No defect detected";
+
+
+    resultContent.innerHTML = `
+
+        <div class="result-live">
+
+            <div class="result-status ${resultClass}">
+
+                <span class="status-dot"></span>
+
+                <strong>
+                    ${resultTitle}
+                </strong>
+
             </div>
 
-            <h3>
-                Model Data Not Found
-            </h3>
-
-            <p>
-                Normal reference features are not available
-                for ${data.category}.
-            </p>
-
-        `;
-
-        return;
-    }
-
-
-    // ==========================================
-    // GET INSPECTION REPORT
-    // ==========================================
-
-    const report = data.inspection_report;
-
-
-    // Safety check
-
-    if (!report) {
-
-        resultContent.innerHTML = `
-
-            <div class="result-icon">
-                !
-            </div>
 
             <h3>
-                Invalid AI Response
+                ${isDefect
+            ? defectType
+            : "GOOD PRODUCT"
+        }
             </h3>
 
-            <p>
-                The backend returned an unexpected response.
+
+            <p class="result-description">
+
+                ${isDefect
+            ? "The AI detected a visual anomaly in the inspected product."
+            : "The AI found no significant visual anomaly in the inspected product."
+        }
+
             </p>
 
-        `;
 
-        return;
-    }
+            <div class="result-id">
 
-
-    // ==========================================
-    // REPORT VALUES
-    // ==========================================
-
-    const inspectionId =
-        report.inspection_id;
-
-    const category =
-        report.category;
-
-    const prediction =
-        report.prediction;
-
-    const productStatus =
-        report.product_status;
-
-    const anomalyScore =
-        Number(report.anomaly_score).toFixed(4);
-
-    const threshold =
-        Number(report.threshold).toFixed(4);
-
-    const decision =
-        report.decision;
-
-
-    // ==========================================
-    // IMAGE QUALITY
-    // ==========================================
-
-    const qualityStatus =
-        report.quality_report.quality_status;
-
-    const sharpness =
-        report.quality_report.sharpness;
-
-    const brightness =
-        report.quality_report.brightness;
-
-    const contrast =
-        report.quality_report.contrast;
-
-    const resolution =
-        report.quality_report.resolution.width +
-        " × " +
-        report.quality_report.resolution.height;
-
-
-    // ==========================================
-    // GOOD PRODUCT
-    // ==========================================
-
-    if (prediction === "GOOD") {
-
-        resultContent.innerHTML = `
-
-            <div class="result-icon">
-                ✓
-            </div>
-
-            <h3>
-                GOOD PRODUCT
-            </h3>
-
-            <p>
-                No significant anomaly detected.
-            </p>
-
-            <p>
                 Inspection ID:
-                <strong>${inspectionId}</strong>
-            </p>
+                <strong>
+                    ${escapeHtml(report.inspection_id)}
+                </strong>
 
-            <p>
-                Category:
-                <strong>${category}</strong>
-            </p>
+            </div>
 
-            <p>
-                Anomaly Score:
-                <strong>${anomalyScore}</strong>
-            </p>
 
-            <p>
-                Threshold:
-                <strong>${threshold}</strong>
-            </p>
+            <div class="result-grid">
 
-            <p>
-                Decision:
-                <strong>${decision}</strong>
-            </p>
 
-            <p>
-                Product Status:
-                <strong>${productStatus}</strong>
-            </p>
+                <div class="result-metric">
 
-            <h4>
-                Image Quality
-            </h4>
+                    <span>
+                        Category
+                    </span>
 
-            <p>
-                Status:
-                <strong>${qualityStatus}</strong>
-            </p>
+                    <strong>
+                        ${formatText(report.category)}
+                    </strong>
 
-            <p>
-                Resolution:
-                <strong>${resolution}</strong>
-            </p>
+                </div>
 
-            <p>
-                Brightness:
-                <strong>${brightness}</strong>
-            </p>
 
-            <p>
-                Contrast:
-                <strong>${contrast}</strong>
-            </p>
+                <div class="result-metric">
 
-            <p>
-                Sharpness:
-                <strong>${sharpness}</strong>
-            </p>
+                    <span>
+                        Anomaly Score
+                    </span>
 
-        `;
+                    <strong>
+                        ${report.anomaly_score ?? "--"}
+                    </strong>
 
+                </div>
+
+
+                <div class="result-metric">
+
+                    <span>
+                        Threshold
+                    </span>
+
+                    <strong>
+                        ${report.threshold ?? "--"}
+                    </strong>
+
+                </div>
+
+
+                <div class="result-metric">
+
+                    <span>
+                        Confidence
+                    </span>
+
+                    <strong>
+                        ${severity.confidence_score !== undefined
+            ? severity.confidence_score + "%"
+            : "--"
+        }
+                    </strong>
+
+                </div>
+
+
+                <div class="result-metric">
+
+                    <span>
+                        Severity
+                    </span>
+
+                    <strong class="severity-value">
+                        ${severity.severity_level
+            ? formatText(severity.severity_level)
+            : "NORMAL"
+        }
+                    </strong>
+
+                </div>
+
+
+                <div class="result-metric">
+
+                    <span>
+                        Risk
+                    </span>
+
+                    <strong>
+                        ${risk.risk_level
+            ? formatText(risk.risk_level)
+            : "LOW"
+        }
+                    </strong>
+
+                </div>
+
+
+            </div>
+
+
+            <div class="product-decision">
+
+                <span>
+                    PRODUCT STATUS
+                </span>
+
+                <strong>
+                    ${escapeHtml(report.product_status || "--")}
+                </strong>
+
+            </div>
+
+
+            ${isDefect
+            ? `
+                        <div class="recommendation">
+
+                            <span>
+                                RECOMMENDED ACTION
+                            </span>
+
+                            <strong>
+                                ${escapeHtml(
+                risk.recommended_action || "REVIEW"
+            )}
+                            </strong>
+
+                        </div>
+                    `
+            : ""
+        }
+
+
+            <div class="quality-section">
+
+                <h4>
+                    IMAGE QUALITY
+                </h4>
+
+
+                <div class="quality-row">
+
+                    <span>
+                        Status
+                    </span>
+
+                    <strong>
+                        ${escapeHtml(
+            quality.quality_status || "--"
+        )}
+                    </strong>
+
+                </div>
+
+
+                <div class="quality-row">
+
+                    <span>
+                        Resolution
+                    </span>
+
+                    <strong>
+                        ${quality.resolution
+            ? `${quality.resolution.width} × ${quality.resolution.height}`
+            : "--"
+        }
+                    </strong>
+
+                </div>
+
+
+                <div class="quality-row">
+
+                    <span>
+                        Brightness
+                    </span>
+
+                    <strong>
+                        ${quality.brightness ?? "--"}
+                    </strong>
+
+                </div>
+
+
+                <div class="quality-row">
+
+                    <span>
+                        Contrast
+                    </span>
+
+                    <strong>
+                        ${quality.contrast ?? "--"}
+                    </strong>
+
+                </div>
+
+
+                <div class="quality-row">
+
+                    <span>
+                        Sharpness
+                    </span>
+
+                    <strong>
+                        ${quality.sharpness ?? "--"}
+                    </strong>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+// ------------------------------------------------------------
+// LOAD INSPECTION HISTORY
+// ------------------------------------------------------------
+
+async function loadInspectionHistory() {
+
+    if (!inspectionHistory) {
+        return;
     }
 
 
-    // ==========================================
-    // DEFECT / ANOMALY
-    // ==========================================
+    try {
 
-    else {
+        const response = await fetch(
+            `${API_BASE}/inspections`
+        );
 
-        resultContent.innerHTML = `
 
-            <div class="result-icon">
-                !
-            </div>
+        if (!response.ok) {
 
-            <h3>
-                ANOMALY DETECTED
-            </h3>
+            throw new Error(
+                "Could not load inspection history."
+            );
 
-            <p>
-                The AI detected a significant visual
-                difference from normal ${category} products.
-            </p>
+        }
 
-            <p>
-                Inspection ID:
-                <strong>${inspectionId}</strong>
-            </p>
 
-            <p>
-                Category:
-                <strong>${category}</strong>
-            </p>
+        const data =
+            await response.json();
 
-            <p>
-                Anomaly Score:
-                <strong>${anomalyScore}</strong>
-            </p>
 
-            <p>
-                Threshold:
-                <strong>${threshold}</strong>
-            </p>
+        const inspections =
+            data.inspections || [];
 
-            <p>
-                Decision:
-                <strong>${decision}</strong>
-            </p>
 
-            <p>
-                Product Status:
-                <strong>${productStatus}</strong>
-            </p>
+        renderInspectionHistory(
+            inspections
+        );
 
-            <h4>
-                Image Quality
-            </h4>
 
-            <p>
-                Status:
-                <strong>${qualityStatus}</strong>
-            </p>
+    } catch (error) {
 
-            <p>
-                Resolution:
-                <strong>${resolution}</strong>
-            </p>
+        console.error(
+            "History error:",
+            error
+        );
 
-            <p>
-                Brightness:
-                <strong>${brightness}</strong>
-            </p>
 
-            <p>
-                Contrast:
-                <strong>${contrast}</strong>
-            </p>
+        inspectionHistory.innerHTML = `
 
-            <p>
-                Sharpness:
-                <strong>${sharpness}</strong>
-            </p>
+            <tr>
+
+                <td
+                    colspan="6"
+                    class="empty-history"
+                >
+                    Unable to load inspection history
+                </td>
+
+            </tr>
 
         `;
 
@@ -487,64 +604,212 @@ function showResult(data) {
 }
 
 
-// ================= LOAD INSPECTION STATISTICS =================
+// ------------------------------------------------------------
+// RENDER INSPECTION HISTORY
+// ------------------------------------------------------------
 
-async function loadInspectionStatistics() {
+function renderInspectionHistory(
+    inspections
+) {
+
+    if (!inspectionHistory) {
+        return;
+    }
+
+
+    // Newest first
+
+    const sorted =
+        [...inspections].reverse();
+
+
+    if (sorted.length === 0) {
+
+        inspectionHistory.innerHTML = `
+
+            <tr>
+
+                <td
+                    colspan="6"
+                    class="empty-history"
+                >
+                    NO INSPECTIONS IN CURRENT SESSION
+                </td>
+
+            </tr>
+
+        `;
+
+        return;
+    }
+
+
+    // Show latest 10
+
+    const recent =
+        sorted.slice(0, 10);
+
+
+    inspectionHistory.innerHTML =
+        recent.map(
+            inspection => {
+
+                const isDefect =
+                    inspection.prediction === "DEFECT";
+
+
+                const resultClass =
+                    isDefect
+                        ? "anomaly"
+                        : "good";
+
+
+                const resultText =
+                    isDefect
+                        ? "DEFECT"
+                        : "GOOD";
+
+
+                const severity =
+                    inspection.severity_report
+                        ? inspection.severity_report.severity_level
+                        : "—";
+
+
+                const filename =
+                    inspection.filename || "—";
+
+
+                const category =
+                    inspection.category || "—";
+
+
+                const anomalyScore =
+                    inspection.anomaly_score !== undefined
+                        ? Number(
+                            inspection.anomaly_score
+                        ).toFixed(4)
+                        : "—";
+
+
+                return `
+
+                    <tr>
+
+                        <td>
+
+                            <div class="image-placeholder">
+
+                                ${isDefect ? "!" : "✓"}
+
+                            </div>
+
+                        </td>
+
+
+                        <td>
+                            ${escapeHtml(filename)}
+                        </td>
+
+
+                        <td>
+                            ${formatText(category)}
+                        </td>
+
+
+                        <td>
+                            ${anomalyScore}
+                        </td>
+
+
+                        <td>
+
+                            <span
+                                class="badge ${resultClass}"
+                            >
+
+                                ${resultText}
+
+                            </span>
+
+                        </td>
+
+
+                        <td>
+
+                            ${severity !== "—"
+                        ? formatText(severity)
+                        : "Completed"
+                    }
+
+                        </td>
+
+                    </tr>
+
+                `;
+
+            }
+        ).join("");
+
+}
+
+
+// ------------------------------------------------------------
+// LOAD DASHBOARD STATISTICS
+// ------------------------------------------------------------
+
+async function loadStatistics() {
 
     try {
 
         const response = await fetch(
-            "http://127.0.0.1:8000/inspection-statistics"
+            `${API_BASE}/inspection-statistics`
         );
 
 
-        const data = await response.json();
-
-        console.log(
-            "Inspection Statistics:",
-            data
-        );
-
-
-        const statistics =
-            data.statistics;
+        if (!response.ok) {
+            throw new Error(
+                "Statistics unavailable"
+            );
+        }
 
 
-        // Update Total Inspections
+        const data =
+            await response.json();
 
-        if (totalInspectionsElement) {
 
-            totalInspectionsElement.textContent =
-                statistics.total_inspections;
+        const stats =
+            data.statistics || {};
+
+
+        if (totalInspections) {
+
+            totalInspections.textContent =
+                stats.total_inspections ?? 0;
 
         }
 
 
-        // Update Good Products
+        if (goodProducts) {
 
-        if (goodProductsElement) {
-
-            goodProductsElement.textContent =
-                statistics.good_products;
+            goodProducts.textContent =
+                stats.good_products ?? 0;
 
         }
 
 
-        // Update Defective Products
+        if (defectiveProducts) {
 
-        if (defectiveProductsElement) {
-
-            defectiveProductsElement.textContent =
-                statistics.defective_products;
+            defectiveProducts.textContent =
+                stats.defective_products ?? 0;
 
         }
 
-    }
 
-    catch (error) {
+    } catch (error) {
 
         console.error(
-            "Could not load inspection statistics:",
+            "Statistics error:",
             error
         );
 
@@ -553,6 +818,113 @@ async function loadInspectionStatistics() {
 }
 
 
-// ================= LOAD STATISTICS ON PAGE LOAD =================
+// ------------------------------------------------------------
+// HELPER — FORMAT FILE SIZE
+// ------------------------------------------------------------
 
-loadInspectionStatistics();
+function formatFileSize(bytes) {
+
+    if (!bytes) {
+        return "0 KB";
+    }
+
+
+    const kb =
+        bytes / 1024;
+
+
+    if (kb < 1024) {
+
+        return `${kb.toFixed(1)} KB`;
+
+    }
+
+
+    return `${(
+        kb / 1024
+    ).toFixed(2)} MB`;
+
+}
+
+
+// ------------------------------------------------------------
+// HELPER — FORMAT TEXT
+// ------------------------------------------------------------
+
+function formatText(value) {
+
+    if (
+        value === undefined ||
+        value === null ||
+        value === ""
+    ) {
+
+        return "—";
+
+    }
+
+
+    return String(value)
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, char =>
+            char.toUpperCase()
+        );
+
+}
+
+
+// ------------------------------------------------------------
+// HELPER — ESCAPE HTML
+// ------------------------------------------------------------
+
+function escapeHtml(value) {
+
+    if (
+        value === undefined ||
+        value === null
+    ) {
+
+        return "";
+
+    }
+
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+}
+
+
+// ------------------------------------------------------------
+// SIMPLE MESSAGE
+// ------------------------------------------------------------
+
+function showMessage(message) {
+
+    if (!resultContent) {
+        alert(message);
+        return;
+    }
+
+
+    resultContent.innerHTML = `
+
+        <div class="result-error">
+
+            <h3>
+                Action Required
+            </h3>
+
+            <p>
+                ${escapeHtml(message)}
+            </p>
+
+        </div>
+
+    `;
+
+}
