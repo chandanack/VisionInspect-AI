@@ -1,117 +1,71 @@
+
 import os
+import random
 import torch
 
 from backend.preprocess import preprocess_image
 from backend.feature_extractor import extract_features
 
-
-# MVTec dataset location
 DATASET_PATH = r"C:\Users\chand\Downloads\mvtec_anomaly_detection"
+OUTPUT_PATH = "normal_features.pt"
+SPLIT_SEED = 42
+REFERENCE_RATIO = 0.80
 
-
-# All MVTec categories
 CATEGORIES = [
-    "bottle",
-    "cable",
-    "capsule",
-    "carpet",
-    "grid",
-    "hazelnut",
-    "leather",
-    "metal_nut",
-    "pill",
-    "screw",
-    "tile",
-    "toothbrush",
-    "transistor",
-    "wood",
-    "zipper"
+    "bottle", "cable", "capsule", "carpet", "grid",
+    "hazelnut", "leather", "metal_nut", "pill", "screw",
+    "tile", "toothbrush", "transistor", "wood", "zipper"
 ]
 
-
-# Store normal features for every category
 all_normal_features = {}
 
-
 for category in CATEGORIES:
-
     print(f"\nProcessing category: {category}")
 
     good_path = os.path.join(
-        DATASET_PATH,
-        category,
-        "train",
-        "good"
+        DATASET_PATH, category, "train", "good"
     )
 
-    features = []
-
-    if not os.path.exists(good_path):
+    if not os.path.isdir(good_path):
         print(f"WARNING: Path not found: {good_path}")
         continue
 
-    for filename in os.listdir(good_path):
+    filenames = sorted(
+        name for name in os.listdir(good_path)
+        if name.lower().endswith((".png", ".jpg", ".jpeg"))
+    )
 
-        if filename.lower().endswith(
-            (".png", ".jpg", ".jpeg")
-        ):
+    random.Random(f"{SPLIT_SEED}-{category}").shuffle(filenames)
 
-            image_path = os.path.join(
-                good_path,
-                filename
-            )
+    reference_count = int(len(filenames) * REFERENCE_RATIO)
+    reference_files = filenames[:reference_count]
 
-            with open(image_path, "rb") as f:
-                image_bytes = f.read()
+    features = []
 
-            # Preprocess image
-            image = preprocess_image(image_bytes)
+    for filename in reference_files:
+        image_path = os.path.join(good_path, filename)
 
-            # Extract ResNet18 features
-            feature = extract_features(image)
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
 
-            features.append(feature)
+        image = preprocess_image(image_bytes)
+        feature = extract_features(image)
+        features.append(feature)
 
     if features:
-
-        # Combine all features for this category
-        normal_features = torch.cat(
-            features,
-            dim=0
-        )
-
-        all_normal_features[category] = normal_features
-
+        all_normal_features[category] = torch.cat(features, dim=0)
         print(
-            f"{category}: "
-            f"{len(features)} normal images → "
-            f"{normal_features.shape}"
+            f"{category}: {len(features)} reference images, "
+            f"{all_normal_features[category].shape}"
         )
 
-    else:
+if len(all_normal_features) != len(CATEGORIES):
+    raise RuntimeError(
+        "Not all 15 categories were processed. "
+        "Original database has not been saved by this run."
+    )
 
-        print(
-            f"No normal images found for {category}"
-        )
+torch.save(all_normal_features, OUTPUT_PATH)
 
-
-# Save all category feature databases
-torch.save(
-    all_normal_features,
-    "normal_features.pt"
-)
-
-
-print("\n===================================")
-print("Normal feature database created!")
-print("===================================")
-
-print(
-    "Categories:",
-    list(all_normal_features.keys())
-)
-
-print(
-    "Total categories:",
-    len(all_normal_features)
-)
+print("\nReference database saved:", OUTPUT_PATH)
+print("Categories:", len(all_normal_features))
