@@ -1,12 +1,27 @@
+
 import joblib
 import numpy as np
+import threading
 
 
 CLASSIFIER_PATH = "backend/defect_classifier.pkl"
 
+_classifier = None
+_classifier_lock = threading.Lock()
+
 
 def load_defect_classifier():
-    return joblib.load(CLASSIFIER_PATH)
+    """Load the classifier once and reuse it."""
+    global _classifier
+
+    if _classifier is None:
+        with _classifier_lock:
+            if _classifier is None:
+                _classifier = joblib.load(
+                    CLASSIFIER_PATH
+                )
+
+    return _classifier
 
 
 def predict_defect(features):

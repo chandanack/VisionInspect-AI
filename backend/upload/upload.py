@@ -1,8 +1,9 @@
+
 from fastapi import APIRouter, UploadFile, File, Form
 
 from backend.preprocess import (
     preprocess_image,
-    analyze_image_quality
+    analyze_image_quality,
 )
 
 from backend.feature_extractor import extract_features
@@ -22,19 +23,41 @@ from backend.inspection_history import add_inspection
 import torch
 from datetime import datetime
 import uuid
+import threading
 
+
+# ==========================================
+# FASTAPI ROUTER
+# ==========================================
 
 router = APIRouter()
 
 
 # ==========================================
-# Load Normal Feature Database
+# Lazy Load Normal Feature Database
 # ==========================================
 
-normal_features = torch.load(
-    "normal_features.pt",
-    weights_only=False
-)
+_normal_features = None
+_feature_lock = threading.Lock()
+
+
+def get_normal_features():
+    """
+    Load the normal feature database only when
+    an inspection request first needs it.
+    """
+    global _normal_features
+
+    if _normal_features is None:
+        with _feature_lock:
+            if _normal_features is None:
+                _normal_features = torch.load(
+                    "normal_features.pt",
+                    map_location="cpu",
+                    weights_only=False,
+                )
+
+    return _normal_features
 
 
 # ==========================================
@@ -56,7 +79,7 @@ CATEGORIES = [
     "toothbrush",
     "transistor",
     "wood",
-    "zipper"
+    "zipper",
 ]
 
 
@@ -79,7 +102,7 @@ THRESHOLDS = {
     "toothbrush": 1.6475,
     "transistor": 1.7346,
     "wood": 1.3598,
-    "zipper": 1.4081
+    "zipper": 1.4081,
 }
 
 
@@ -90,7 +113,7 @@ THRESHOLDS = {
 @router.post("/upload")
 async def upload_image(
     category: str = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
 ):
 
     # ======================================
@@ -100,17 +123,16 @@ async def upload_image(
     if category not in CATEGORIES:
         return {
             "message": "Invalid category",
-            "available_categories": CATEGORIES
+            "available_categories": CATEGORIES,
         }
-
 
     # ======================================
     # Get Category Normal Features
     # ======================================
 
-    category_features = normal_features.get(
-        category
-    )
+    normal_features = get_normal_features()
+
+    category_features = normal_features.get(category)
 
     if category_features is None:
         return {
@@ -118,17 +140,14 @@ async def upload_image(
                 "Normal features not found "
                 "for this category"
             ),
-            "category": category
+            "category": category,
         }
-
 
     # ======================================
     # Get Category Threshold
     # ======================================
 
-    threshold = THRESHOLDS.get(
-        category
-    )
+    threshold = THRESHOLDS.get(category)
 
     if threshold is None:
         return {
@@ -136,16 +155,14 @@ async def upload_image(
                 "Threshold not configured "
                 "for this category"
             ),
-            "category": category
+            "category": category,
         }
-
 
     # ======================================
     # Read Image
     # ======================================
 
     image_bytes = await file.read()
-
 
     # ======================================
     # Image Quality Analysis
@@ -155,7 +172,6 @@ async def upload_image(
         image_bytes
     )
 
-
     # ======================================
     # Image Preprocessing
     # ======================================
@@ -163,7 +179,6 @@ async def upload_image(
     image = preprocess_image(
         image_bytes
     )
-
 
     # ======================================
     # Feature Extraction
@@ -173,7 +188,6 @@ async def upload_image(
         image
     )
 
-
     # ======================================
     # Anomaly Detection
     # ======================================
@@ -181,9 +195,8 @@ async def upload_image(
     result = predict_anomaly(
         features,
         category_features,
-        threshold=threshold
+        threshold=threshold,
     )
-
 
     # ======================================
     # Defect Categorization
@@ -199,7 +212,6 @@ async def upload_image(
             features
         )
 
-
     # ======================================
     # Severity + Risk Assessment
     # ======================================
@@ -212,7 +224,7 @@ async def upload_image(
         # Confidence
         confidence_score = calculate_confidence(
             result["anomaly_score"],
-            threshold
+            threshold,
         )
 
         # Defect type
@@ -237,7 +249,7 @@ async def upload_image(
             defect_size_score,
             defect_location_score,
             defect_type_score,
-            confidence_score
+            confidence_score,
         )
 
         # Store individual scores
@@ -260,9 +272,8 @@ async def upload_image(
         # Quality risk
         risk_report = assess_quality_risk(
             severity_report["severity_score"],
-            severity_report["severity_level"]
+            severity_report["severity_level"],
         )
-
 
     # ======================================
     # Generate Inspection ID
@@ -273,15 +284,11 @@ async def upload_image(
         + uuid.uuid4().hex[:8].upper()
     )
 
-
     # ======================================
     # Inspection Timestamp
     # ======================================
 
-    inspection_time = (
-        datetime.now().isoformat()
-    )
-
+    inspection_time = datetime.now().isoformat()
 
     # ======================================
     # Determine Product Status
@@ -291,7 +298,6 @@ async def upload_image(
         product_status = "REJECT"
     else:
         product_status = "ACCEPT"
-
 
     # ======================================
     # Generate Production Quality Report
@@ -305,62 +311,36 @@ async def upload_image(
             defect_type=defect_type,
             severity_report=severity_report,
             risk_report=risk_report,
-            product_status=product_status
+            product_status=product_status,
         )
     )
-
 
     # ======================================
     # Build Inspection Report
     # ======================================
 
     inspection_report = {
-
         "inspection_id": inspection_id,
-
         "inspection_time": inspection_time,
-
         "filename": file.filename,
-
         "category": category,
-
         "prediction": result["result"],
-
         "defect_type": defect_type,
-
         "severity_report": severity_report,
-
         "risk_report": risk_report,
-
         "production_quality_report": (
             production_quality_report
         ),
-
         "product_status": product_status,
-
         "anomaly_score": result[
             "anomaly_score"
         ],
-
-        "threshold": result[
-            "threshold"
-        ],
-
-        "decision": result[
-            "decision"
-        ],
-
-        "image_shape": list(
-            image.shape
-        ),
-
-        "feature_shape": list(
-            features.shape
-        ),
-
-        "quality_report": quality_report
+        "threshold": result["threshold"],
+        "decision": result["decision"],
+        "image_shape": list(image.shape),
+        "feature_shape": list(features.shape),
+        "quality_report": quality_report,
     }
-
 
     # ======================================
     # Store Inspection
@@ -370,18 +350,13 @@ async def upload_image(
         inspection_report
     )
 
-
     # ======================================
     # Final API Response
     # ======================================
 
     return {
-
         "message": (
             "Inspection completed successfully"
         ),
-
-        "inspection_report": (
-            inspection_report
-        )
+        "inspection_report": inspection_report,
     }

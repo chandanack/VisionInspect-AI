@@ -1,18 +1,35 @@
+
 import timm
 import torch
+import threading
 
 
 # ==========================================
-# Load Pretrained ResNet18
+# Lazy Load Pretrained ResNet18
 # ==========================================
 
-model = timm.create_model(
-    "resnet18",
-    pretrained=True,
-    num_classes=0
-)
+_model = None
+_model_lock = threading.Lock()
 
-model.eval()
+
+def get_model():
+    """
+    Load ResNet18 only when feature extraction
+    is first requested.
+    """
+    global _model
+
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                _model = timm.create_model(
+                    "resnet18",
+                    pretrained=True,
+                    num_classes=0,
+                )
+                _model.eval()
+
+    return _model
 
 
 # ==========================================
@@ -33,36 +50,26 @@ STD = torch.tensor(
 # ==========================================
 
 def extract_features(image):
-
     # Convert NumPy image to PyTorch tensor
-    tensor = torch.tensor(
+    tensor = torch.as_tensor(
         image,
-        dtype=torch.float32
+        dtype=torch.float32,
     )
 
-    # Change:
-    # Height, Width, Channels
-    # to:
-    # Channels, Height, Width
-
-    tensor = tensor.permute(
-        2, 0, 1
-    )
+    # HWC -> CHW
+    tensor = tensor.permute(2, 0, 1)
 
     # Add batch dimension
-
     tensor = tensor.unsqueeze(0)
 
     # Apply ImageNet normalization
+    tensor = (tensor - MEAN) / STD
 
-    tensor = (
-        tensor - MEAN
-    ) / STD
+    # Load model only when needed
+    model = get_model()
 
     # Extract ResNet18 features
-
-    with torch.no_grad():
-
+    with torch.inference_mode():
         features = model(tensor)
 
     return features
