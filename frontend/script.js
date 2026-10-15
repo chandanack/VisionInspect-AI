@@ -3,7 +3,7 @@
 // FRONTEND CONTROLLER
 // ============================================================
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://visioninspect-ai-n4x7.onrender.com";
 
 // ------------------------------------------------------------
 // DOM ELEMENTS
