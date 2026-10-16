@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://visioninspect-ai-n4x7.onrender.com";
 
 type Result = {
   category: string;
@@ -293,9 +293,8 @@ export default function Home() {
           ].map(([name, icon]) => (
             <button
               key={name}
-              className={`menu-item ${
-                active === name ? "selected" : ""
-              }`}
+              className={`menu-item ${active === name ? "selected" : ""
+                }`}
               onClick={() => setActive(name)}
             >
               <span>{icon}</span>
@@ -628,12 +627,11 @@ export default function Home() {
               <div className="result-content">
 
                 <div
-                  className={`decision ${
-                    result.defect_detection
-                      .is_defective
-                      ? "bad"
-                      : "good"
-                  }`}
+                  className={`decision ${result.defect_detection
+                    .is_defective
+                    ? "bad"
+                    : "good"
+                    }`}
                 >
 
                   <div className="decision-icon">
@@ -896,11 +894,10 @@ export default function Home() {
                       <div
                         className="bar-fill"
                         style={{
-                          width: `${
-                            (item.count /
-                              maxDefect) *
+                          width: `${(item.count /
+                            maxDefect) *
                             100
-                          }%`,
+                            }%`,
                         }}
                       ></div>
                     </div>
@@ -963,11 +960,10 @@ export default function Home() {
                       <div
                         className="bar-fill"
                         style={{
-                          width: `${
-                            (item.count /
-                              maxSeverity) *
+                          width: `${(item.count /
+                            maxSeverity) *
                             100
-                          }%`,
+                            }%`,
                         }}
                       ></div>
                     </div>
@@ -1141,7 +1137,7 @@ export default function Home() {
 
                     <strong>
                       {inspection.confidence_score !==
-                      null
+                        null
                         ? `${inspection.confidence_score}%`
                         : "—"}
                     </strong>
@@ -1271,9 +1267,8 @@ function KPI({
         <span>{label}</span>
 
         <div
-          className={`kpi-icon ${
-            danger ? "danger" : ""
-          }`}
+          className={`kpi-icon ${danger ? "danger" : ""
+            }`}
         >
           {icon}
         </div>

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://visioninspect-ai-n4x7.onrender.com";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -84,16 +84,16 @@ export default function LoginPage() {
       // We will verify the actual role IDs
       // from PostgreSQL before finalizing this.
       if (user.role_id === 2) {
-  router.replace("/engineer");
-} else if (user.role_id === 3) {
-  router.replace("/supervisor");
-} else if (user.role_id === 1) {
-  // Admin currently uses the engineer workspace
-  // until the admin management UI is completed.
-  router.replace("/engineer");
-} else {
-  throw new Error("Unknown user role");
-}
+        router.replace("/engineer");
+      } else if (user.role_id === 3) {
+        router.replace("/supervisor");
+      } else if (user.role_id === 1) {
+        // Admin currently uses the engineer workspace
+        // until the admin management UI is completed.
+        router.replace("/engineer");
+      } else {
+        throw new Error("Unknown user role");
+      }
 
     } catch (err) {
       setError(
